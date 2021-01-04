@@ -1,22 +1,6 @@
-# import os
-#
-# path = "D:\\TEST\\SAFAL\\SG5.2MW-145CIIBMKII_MAKE(GF)_91m_DDBB(5.0MW_T91.4)\\"
-# files_and_directories = os.listdir(path)
-# # print (files_and_directories)
-#
-# try:
-#     with open("D:\\TEST\\SAFAL\\foundTower.txt", "w") as sumFile:
-#         for file in files_and_directories:
-#             if file.endswith("xls"):
-#                 sumFile.write(file + "\n")
-#                 with open(path + file) as f:
-#                     for line in f:
-#                         if line.find("TOWER\tMY\t0") != -1:
-#                             sumFile.write(line + "\n")
-# except Exception as err:
-#     print("Exception:", err)
 """
 This script will search in a directory recursively.
+Sources: https://github.com/Musta-Shr/LocalFoldersIdexing/blob/main/FileLookupV1_0.py
 
 On 2 Jan. 2021 only supports text files.
 @requirements: Python 2.5+
@@ -27,12 +11,23 @@ import os
 import tkinter as tk
 from tkinter import ttk, Button, filedialog, Label, Entry
 from win32api import GetSystemMetrics
+import magic
+
+
+# Function that reads subfolders and add it to the main list
+def ls_dir(path):
+    dir_list = os.listdir(path)
+    folder_paths = []
+    for item in dir_list:
+        item_path = path + "/" + item
+        if os.path.isdir(item_path):
+            folder_paths.append(item_path)
+    return folder_paths
 
 
 class Application(ttk.Frame):
     def __init__(self, main):
         super(Application, self).__init__()
-        self.directory = "./"
         self.main_window = main
         self.width_screen = GetSystemMetrics(0)
         self.height_screen = GetSystemMetrics(1)
@@ -42,9 +37,11 @@ class Application(ttk.Frame):
 
         # Button browse directory
         self.buttonBrowse = Button(self.main_window, text="Browse directory",
-                                   font=("Verdana", round(self.width_screen / 77)), relief="raised", bd=6,
+                                   font=("Verdana", round(self.width_screen / 150)), relief="raised", bd=6,
                                    command=self.browse)
-        self.buttonBrowse.place(relx=0.5, rely=0.08, relwidth=0.3, anchor="center")
+        self.buttonBrowse.place(relx=0.39, rely=0.08, relwidth=0.1, anchor="center")
+        self.directory_search = Entry(self.main_window)
+        self.directory_search.place(relx=0.55, rely=0.08, relwidth=0.2, anchor="center")
 
         # Create progress bar
         self.progressbar = ttk.Progressbar(self.main_window)
@@ -58,7 +55,7 @@ class Application(ttk.Frame):
         self.extension.place(relx=0.5, rely=0.20, relwidth=0.1, anchor="center")
 
         # Content to search. This is mandatory.
-        self.contentLabel = Label(self.main_window, text="Content of files",
+        self.contentLabel = Label(self.main_window, text="Content to search",
                                   font=("Verdana", round(self.width_screen / 160)))
         self.contentLabel.place(relx=0.39, rely=0.25, relwidth=0.3, anchor="center")
         self.content = Entry(self.main_window)
@@ -69,12 +66,12 @@ class Application(ttk.Frame):
                                    font=("Verdana", round(self.width_screen / 150)), relief="raised", bd=6,
                                    command=self.outputDirectory)
         self.buttonOutput.place(relx=0.39, rely=0.30, relwidth=0.1, anchor="center")
-        self.output = Entry(self.main_window)
-        self.output.place(relx=0.5, rely=0.30, relwidth=0.1, anchor="center")
+        self.directory_output = Entry(self.main_window)
+        self.directory_output.place(relx=0.5, rely=0.30, relwidth=0.1, anchor="center")
 
         # Error message
         self.message = Label(self.main_window, text="",
-                             font=("Verdana", round(self.width_screen/113)))
+                             font=("Verdana", round(self.width_screen / 113)))
         self.message.place(relx=0.5, rely=0.5, anchor="center")
 
         # Button search
@@ -90,34 +87,141 @@ class Application(ttk.Frame):
         self.buttonCancel.place(relx=0.55, rely=0.4, relwidth=0.1, anchor="center")
 
     def browse(self):
-        while True:
-            self.directory = filedialog.askdirectory()
-            if self.directory != "":
-                break
+        self.directory_search.insert(0, filedialog.askdirectory())
         return
 
     def outputDirectory(self):
-        self.output.insert(0, filedialog.askdirectory())
+        self.directory_output.insert(0, filedialog.askdirectory())
         return
 
     def search(self):
+        self.block_interface()
         if self.checkContent():
-            dirlst = os.listdir(self.directory)
+            # Creating the seed list
+            remaining_path = ls_dir(self.directory_search.get())
+            try:
+                self.progressbar.start()
+                # Looping through the list
+                with open(self.directory_output.get() + "contentFound.txt", "wb") as output_file, \
+                        open(self.directory_output.get() + "discardedFiles.txt", "wb") as discard_file:
+
+                    while len(remaining_path) > 0:
+                        for folder in remaining_path:
+                            dir_lst = os.listdir(folder)
+                            for item in dir_lst:
+                                full_item = folder + "/" + item
+                                line_output = []
+                                line_discard = []
+                                if os.path.isfile(full_item):
+                                    type_of_text = magic.from_file(full_item, mime=True)
+                                    if type_of_text.find("text/") == 0:
+                                        if self.extension.get() == "" or item.endswith(self.extension.get()):
+                                            try:
+                                                with open(full_item, "r") as f:
+                                                    i = 1
+                                                    line_found = False
+                                                    line_output.append("\n-------------------------------------------")
+                                                    line_output.append(full_item)
+                                                    for line in f:
+                                                        if line.find(self.content.get()) != -1:
+                                                            line_found = True
+                                                            line_output.append("Line " + str(i) + " : " + line)
+                                                        i = i + 1
+                                                    if not line_found:
+                                                        line_output.append("Content not found")
+                                                    line_output.append("-------------------------------------------")
+
+                                            except PermissionError:
+                                                line_discard.append("\n-------------------------------------------")
+                                                line_discard.append("File " + full_item +
+                                                                    " could not be read due to permissions.")
+                                                line_discard.append("-------------------------------------------")
+                                                line_output.clear()
+                                            except UnicodeDecodeError:
+                                                line_discard.append("\n-------------------------------------------")
+                                                line_discard.append("File " + full_item +
+                                                                    " could not be read due to codification.")
+                                                line_discard.append("-------------------------------------------")
+                                                line_output.clear()
+                                    else:
+                                        line_discard.append("\n-------------------------------------------")
+                                        line_discard.append("File " + full_item + " is not a text file.")
+                                        line_discard.append("-------------------------------------------")
+                                        line_output.clear()
+                                else:
+                                    try:
+                                        new_items = ls_dir(folder)
+                                        remaining_path.extend(new_items)
+                                        if folder in remaining_path:
+                                            remaining_path.remove(folder)
+                                    except PermissionError:
+                                        line_discard.append("\n-------------------------------------------")
+                                        line_discard.append("File " + full_item +
+                                                            " could not be read due to permissions.")
+                                        line_discard.append("-------------------------------------------")
+                                        line_output.clear()
+                                        if folder in remaining_path:
+                                            remaining_path.remove(folder)
+
+                                if line_discard:
+                                    discard_file.write("\n".join(line_discard).encode('utf-8'))
+                                    discard_file.flush()
+                                    line_discard.clear()
+                                if line_output:
+                                    output_file.write("\n".join(line_output).encode('utf-8'))
+                                    output_file.flush()
+                                    line_output.clear()
+
+            except IOError as err:
+                print("Exception:", err, ". Error creating files contentFound.txt and discardedFiles.txt in",
+                      self.directory_output)
+            finally:
+                self.progressbar.stop()
+                output_file.close()
+                discard_file.close()
         else:
-            self.show_message("Please write some content to search.")
+            self.show_message("Please specify the directory and the content to search.")
         return
 
     def checkContent(self):
-        return False
+        if self.content.get() == "" or self.directory_search.get() == "":
+            return False
+        else:
+            return True
 
     def show_message(self, message_output):
         if message_output != "":
-            # self.reset()
+            self.reset()
             self.message['text'] = message_output
-        self.buttonBrowse.config(state="normal")
 
     def reset(self):
-        pass
+        self.progressbar.stop()
+        self.extension.config(state="normal")
+        self.content.config(state="normal")
+        self.directory_output.config(state="normal")
+        self.directory_search.config(state="normal")
+        self.message.config(state="normal")
+        self.extension.delete(0, 'end')
+        self.content.delete(0, 'end')
+        self.directory_search.delete(0, 'end')
+        self.directory_output.delete(0, 'end')
+        self.message['text'] = ""
+        self.buttonBrowse.config(state="normal")
+        self.buttonSearch.config(state="normal")
+        self.buttonOutput.config(state="normal")
+        self.buttonCancel.config(state="normal")
+        return
+
+    def block_interface(self):
+        self.extension.config(state="disabled")
+        self.content.config(state="disabled")
+        self.directory_search.config(state="disabled")
+        self.directory_output.config(state="disabled")
+        self.message.config(state="disabled")
+        self.buttonBrowse.config(state="disabled")
+        self.buttonSearch.config(state="disabled")
+        self.buttonOutput.config(state="disabled")
+        return
 
 
 if __name__ == "__main__":
