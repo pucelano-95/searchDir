@@ -29,7 +29,6 @@ def ls_dir(path):
 class Application(ttk.Frame):
     def __init__(self, main):
         super(Application, self).__init__()
-        self.thread = threading.Thread(target=self.search_thread, args=())
         self.main_window = main
         self.width_screen = GetSystemMetrics(0)
         self.height_screen = GetSystemMetrics(1)
@@ -99,7 +98,8 @@ class Application(ttk.Frame):
     def search(self):
         self.block_interface()
         if self.checkContent():
-            self.thread.start()
+            thread = threading.Thread(target=self.search_thread, args=())
+            thread.start()
         else:
             self.show_message("Please specify the directory and the content to search.")
         return
@@ -107,6 +107,9 @@ class Application(ttk.Frame):
     def search_thread(self):
         # Creating the seed list
         remaining_path = ls_dir(self.directory_search.get())
+        if not remaining_path: # In case is empty
+            remaining_path.append(self.directory_search.get())
+
         try:
             self.progressbar.start()
             # Looping through the list
@@ -128,7 +131,7 @@ class Application(ttk.Frame):
                                             with open(full_item, "r") as f:
                                                 i = 1
                                                 line_found = False
-                                                line_output.append("\n-------------------------------------------")
+                                                line_output.append("-------------------------------------------")
                                                 line_output.append(full_item)
                                                 for line in f:
                                                     if line.find(self.content.get()) != -1:
@@ -137,39 +140,36 @@ class Application(ttk.Frame):
                                                     i = i + 1
                                                 if not line_found:
                                                     line_output.append("Content not found")
-                                                line_output.append("-------------------------------------------")
+                                                line_output.append("-------------------------------------------\n")
 
                                         except PermissionError:
-                                            line_discard.append("\n-------------------------------------------")
+                                            line_discard.append("-------------------------------------------")
                                             line_discard.append("File " + full_item +
                                                                 " could not be read due to permissions.")
-                                            line_discard.append("-------------------------------------------")
+                                            line_discard.append("-------------------------------------------\n")
                                             line_output.clear()
                                         except UnicodeDecodeError:
-                                            line_discard.append("\n-------------------------------------------")
+                                            line_discard.append("-------------------------------------------")
                                             line_discard.append("File " + full_item +
                                                                 " could not be read due to codification.")
-                                            line_discard.append("-------------------------------------------")
+                                            line_discard.append("-------------------------------------------\n")
                                             line_output.clear()
                                 else:
-                                    line_discard.append("\n-------------------------------------------")
-                                    line_discard.append("File " + full_item + " is not a text file.")
                                     line_discard.append("-------------------------------------------")
+                                    line_discard.append("File " + full_item + " is not a text file.")
+                                    line_discard.append("-------------------------------------------\n")
                                     line_output.clear()
                             else:
                                 try:
                                     new_items = ls_dir(folder)
                                     remaining_path.extend(new_items)
-                                    if folder in remaining_path:
-                                        remaining_path.remove(folder)
                                 except PermissionError:
                                     line_discard.append("\n-------------------------------------------")
                                     line_discard.append("File " + full_item +
                                                         " could not be read due to permissions.")
                                     line_discard.append("-------------------------------------------")
                                     line_output.clear()
-                                    if folder in remaining_path:
-                                        remaining_path.remove(folder)
+
 
                             if line_discard:
                                 discard_file.write("\n".join(line_discard).encode('utf-8'))
@@ -180,6 +180,8 @@ class Application(ttk.Frame):
                                 output_file.flush()
                                 line_output.clear()
 
+                        if folder in remaining_path:
+                            remaining_path.remove(folder)
         except IOError as err:
             print("Exception:", err, ". Error creating files contentFound.txt and discardedFiles.txt in",
                   self.directory_output)
