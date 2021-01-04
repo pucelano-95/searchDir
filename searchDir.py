@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk, Button, filedialog, Label, Entry
 from win32api import GetSystemMetrics
 import magic
+import threading
 
 
 # Function that reads subfolders and add it to the main list
@@ -28,6 +29,7 @@ def ls_dir(path):
 class Application(ttk.Frame):
     def __init__(self, main):
         super(Application, self).__init__()
+        self.thread = threading.Thread(target=self.search_thread, args=())
         self.main_window = main
         self.width_screen = GetSystemMetrics(0)
         self.height_screen = GetSystemMetrics(1)
@@ -81,10 +83,10 @@ class Application(ttk.Frame):
         self.buttonSearch.place(relx=0.42, rely=0.4, relwidth=0.1, anchor="center")
 
         # Button cancel search
-        self.buttonCancel = Button(self.main_window, text="Cancel search",
-                                   font=("Verdana", round(self.width_screen / 150)), relief="raised", bd=6,
-                                   command=self.reset)
-        self.buttonCancel.place(relx=0.55, rely=0.4, relwidth=0.1, anchor="center")
+        self.buttonReset = Button(self.main_window, text="Reset",
+                                  font=("Verdana", round(self.width_screen / 150)), relief="raised", bd=6,
+                                  command=self.reset)
+        self.buttonReset.place(relx=0.55, rely=0.4, relwidth=0.1, anchor="center")
 
     def browse(self):
         self.directory_search.insert(0, filedialog.askdirectory())
@@ -97,90 +99,95 @@ class Application(ttk.Frame):
     def search(self):
         self.block_interface()
         if self.checkContent():
-            # Creating the seed list
-            remaining_path = ls_dir(self.directory_search.get())
-            try:
-                self.progressbar.start()
-                # Looping through the list
-                with open(self.directory_output.get() + "contentFound.txt", "wb") as output_file, \
-                        open(self.directory_output.get() + "discardedFiles.txt", "wb") as discard_file:
-
-                    while len(remaining_path) > 0:
-                        for folder in remaining_path:
-                            dir_lst = os.listdir(folder)
-                            for item in dir_lst:
-                                full_item = folder + "/" + item
-                                line_output = []
-                                line_discard = []
-                                if os.path.isfile(full_item):
-                                    type_of_text = magic.from_file(full_item, mime=True)
-                                    if type_of_text.find("text/") == 0:
-                                        if self.extension.get() == "" or item.endswith(self.extension.get()):
-                                            try:
-                                                with open(full_item, "r") as f:
-                                                    i = 1
-                                                    line_found = False
-                                                    line_output.append("\n-------------------------------------------")
-                                                    line_output.append(full_item)
-                                                    for line in f:
-                                                        if line.find(self.content.get()) != -1:
-                                                            line_found = True
-                                                            line_output.append("Line " + str(i) + " : " + line)
-                                                        i = i + 1
-                                                    if not line_found:
-                                                        line_output.append("Content not found")
-                                                    line_output.append("-------------------------------------------")
-
-                                            except PermissionError:
-                                                line_discard.append("\n-------------------------------------------")
-                                                line_discard.append("File " + full_item +
-                                                                    " could not be read due to permissions.")
-                                                line_discard.append("-------------------------------------------")
-                                                line_output.clear()
-                                            except UnicodeDecodeError:
-                                                line_discard.append("\n-------------------------------------------")
-                                                line_discard.append("File " + full_item +
-                                                                    " could not be read due to codification.")
-                                                line_discard.append("-------------------------------------------")
-                                                line_output.clear()
-                                    else:
-                                        line_discard.append("\n-------------------------------------------")
-                                        line_discard.append("File " + full_item + " is not a text file.")
-                                        line_discard.append("-------------------------------------------")
-                                        line_output.clear()
-                                else:
-                                    try:
-                                        new_items = ls_dir(folder)
-                                        remaining_path.extend(new_items)
-                                        if folder in remaining_path:
-                                            remaining_path.remove(folder)
-                                    except PermissionError:
-                                        line_discard.append("\n-------------------------------------------")
-                                        line_discard.append("File " + full_item +
-                                                            " could not be read due to permissions.")
-                                        line_discard.append("-------------------------------------------")
-                                        line_output.clear()
-                                        if folder in remaining_path:
-                                            remaining_path.remove(folder)
-
-                                if line_discard:
-                                    discard_file.write("\n".join(line_discard).encode('utf-8'))
-                                    discard_file.flush()
-                                    line_discard.clear()
-                                if line_output:
-                                    output_file.write("\n".join(line_output).encode('utf-8'))
-                                    output_file.flush()
-                                    line_output.clear()
-
-            except IOError as err:
-                print("Exception:", err, ". Error creating files contentFound.txt and discardedFiles.txt in",
-                      self.directory_output)
-            finally:
-                self.progressbar.stop()
-                output_file.close()
-                discard_file.close()
+            self.thread.start()
         else:
             self.show_message("Please specify the directory and the content to search.")
+        return
+
+    def search_thread(self):
+        # Creating the seed list
+        remaining_path = ls_dir(self.directory_search.get())
+        try:
+            self.progressbar.start()
+            # Looping through the list
+            with open(self.directory_output.get() + "contentFound.txt", "wb") as output_file, \
+                    open(self.directory_output.get() + "discardedFiles.txt", "wb") as discard_file:
+
+                while len(remaining_path) > 0:
+                    for folder in remaining_path:
+                        dir_lst = os.listdir(folder)
+                        for item in dir_lst:
+                            full_item = folder + "/" + item
+                            line_output = []
+                            line_discard = []
+                            if os.path.isfile(full_item):
+                                type_of_text = magic.from_file(full_item, mime=True)
+                                if type_of_text.find("text/") == 0:
+                                    if self.extension.get() == "" or item.endswith(self.extension.get()):
+                                        try:
+                                            with open(full_item, "r") as f:
+                                                i = 1
+                                                line_found = False
+                                                line_output.append("\n-------------------------------------------")
+                                                line_output.append(full_item)
+                                                for line in f:
+                                                    if line.find(self.content.get()) != -1:
+                                                        line_found = True
+                                                        line_output.append("Line " + str(i) + " : " + line)
+                                                    i = i + 1
+                                                if not line_found:
+                                                    line_output.append("Content not found")
+                                                line_output.append("-------------------------------------------")
+
+                                        except PermissionError:
+                                            line_discard.append("\n-------------------------------------------")
+                                            line_discard.append("File " + full_item +
+                                                                " could not be read due to permissions.")
+                                            line_discard.append("-------------------------------------------")
+                                            line_output.clear()
+                                        except UnicodeDecodeError:
+                                            line_discard.append("\n-------------------------------------------")
+                                            line_discard.append("File " + full_item +
+                                                                " could not be read due to codification.")
+                                            line_discard.append("-------------------------------------------")
+                                            line_output.clear()
+                                else:
+                                    line_discard.append("\n-------------------------------------------")
+                                    line_discard.append("File " + full_item + " is not a text file.")
+                                    line_discard.append("-------------------------------------------")
+                                    line_output.clear()
+                            else:
+                                try:
+                                    new_items = ls_dir(folder)
+                                    remaining_path.extend(new_items)
+                                    if folder in remaining_path:
+                                        remaining_path.remove(folder)
+                                except PermissionError:
+                                    line_discard.append("\n-------------------------------------------")
+                                    line_discard.append("File " + full_item +
+                                                        " could not be read due to permissions.")
+                                    line_discard.append("-------------------------------------------")
+                                    line_output.clear()
+                                    if folder in remaining_path:
+                                        remaining_path.remove(folder)
+
+                            if line_discard:
+                                discard_file.write("\n".join(line_discard).encode('utf-8'))
+                                discard_file.flush()
+                                line_discard.clear()
+                            if line_output:
+                                output_file.write("\n".join(line_output).encode('utf-8'))
+                                output_file.flush()
+                                line_output.clear()
+
+        except IOError as err:
+            print("Exception:", err, ". Error creating files contentFound.txt and discardedFiles.txt in",
+                  self.directory_output)
+        finally:
+            output_file.close()
+            discard_file.close()
+            self.progressbar.stop()
+            self.show_message("The search has been successful.")
         return
 
     def checkContent(self):
@@ -209,7 +216,7 @@ class Application(ttk.Frame):
         self.buttonBrowse.config(state="normal")
         self.buttonSearch.config(state="normal")
         self.buttonOutput.config(state="normal")
-        self.buttonCancel.config(state="normal")
+        self.buttonReset.config(state="normal")
         return
 
     def block_interface(self):
@@ -221,6 +228,7 @@ class Application(ttk.Frame):
         self.buttonBrowse.config(state="disabled")
         self.buttonSearch.config(state="disabled")
         self.buttonOutput.config(state="disabled")
+        self.buttonReset.config(state="disabled")
         return
 
 
